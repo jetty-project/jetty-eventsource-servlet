@@ -1,0 +1,206 @@
+/*
+ * Copyright (c) 2011 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.eclipse.jetty.servlets;
+
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.util.Enumeration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.eclipse.jetty.continuation.Continuation;
+import org.eclipse.jetty.continuation.ContinuationSupport;
+
+/**
+ * <p>A servlet that implements the <a href="http://www.w3.org/TR/eventsource/">event source protocol</a>,
+ * also known as "server sent events".</p>
+ * <p>This servlet must be subclassed to implement abstract method {@link #newEventSource(HttpServletRequest)}
+ * to return an instance of {@link EventSource} that allows application to listen for event source events
+ * and to emit event source events.</p>
+ *
+ * <p>NOTE: there is currently no support for last-event-id</p>
+ */
+public abstract class EventSourceServlet extends HttpServlet
+{
+    private static final byte[] EVENT_FIELD = "event: ".getBytes(Charset.forName("UTF-8"));
+    private static final byte[] DATA_FIELD = "data: ".getBytes(Charset.forName("UTF-8"));
+    private static final byte[] COMMENT_FIELD = ": ".getBytes(Charset.forName("UTF-8"));
+
+    private ScheduledExecutorService scheduler;
+    private int heartBeatPeriod = 10;
+
+    @Override
+    public void init() throws ServletException
+    {
+        String heartBeatPeriodParam = getServletConfig().getInitParameter("heartBeatPeriod");
+        if (heartBeatPeriodParam != null)
+            heartBeatPeriod = Integer.parseInt(heartBeatPeriodParam);
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+    }
+
+    @Override
+    public void destroy()
+    {
+        if (scheduler != null)
+            scheduler.shutdown();
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException
+    {
+        @SuppressWarnings("unchecked")
+        Enumeration<String> acceptValues = request.getHeaders("Accept");
+        while (acceptValues.hasMoreElements())
+        {
+            String accept = acceptValues.nextElement();
+            if (accept.equals("text/event-stream"))
+            {
+                EventSource eventSource = newEventSource(request);
+                if (eventSource == null)
+                {
+                    response.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+                }
+                else
+                {
+                    respond(request, response);
+                    Continuation continuation = ContinuationSupport.getContinuation(request);
+                    // Infinite timeout because the continuation is never resumed,
+                    // but only completed on close
+                    continuation.setTimeout(0L);
+                    continuation.suspend(response);
+                    EventSourceEmitter emitter = new EventSourceEmitter(eventSource, continuation);
+                    emitter.scheduleHeartBeat();
+                    open(eventSource, emitter);
+                }
+                return;
+            }
+        }
+        super.doGet(request, response);
+    }
+
+    protected abstract EventSource newEventSource(HttpServletRequest request);
+
+    protected void respond(HttpServletRequest request, HttpServletResponse response) throws IOException
+    {
+        response.setStatus(HttpServletResponse.SC_OK);
+        response.setContentType("text/event-stream");
+        // By adding this header, and not closing the connection,
+        // we disable HTTP chunking, and we can use write()+flush()
+        // to send data in the text/event-stream protocol
+        response.addHeader("Connection", "close");
+        response.flushBuffer();
+    }
+
+    protected void open(EventSource eventSource, EventSource.Emitter emitter) throws IOException
+    {
+        eventSource.onOpen(emitter);
+    }
+
+    protected class EventSourceEmitter implements EventSource.Emitter, Runnable
+    {
+        private final EventSource eventSource;
+        private final Continuation continuation;
+        private final ServletOutputStream output;
+        private Future<?> heartBeat;
+        private boolean closed;
+
+        public EventSourceEmitter(EventSource eventSource, Continuation continuation) throws IOException
+        {
+            this.eventSource = eventSource;
+            this.continuation = continuation;
+            this.output = continuation.getServletResponse().getOutputStream();
+        }
+
+        public void data(String data) throws IOException
+        {
+            synchronized (this)
+            {
+                output.write(DATA_FIELD);
+                output.println(data);
+                output.println();
+                flush();
+            }
+        }
+
+        public void comment(String comment) throws IOException
+        {
+            synchronized (this)
+            {
+                output.write(COMMENT_FIELD);
+                output.println(comment);
+                output.println();
+                flush();
+            }
+        }
+
+        public void run()
+        {
+            // If the other peer closes the connection, the first
+            // flush() should generate a TCP reset that is detected
+            // on the second flush()
+            try
+            {
+                synchronized (this)
+                {
+                    output.write('\r');
+                    flush();
+                    output.write('\n');
+                    flush();
+                }
+                // We could write, reschedule heartbeat
+                scheduleHeartBeat();
+            }
+            catch (IOException x)
+            {
+                // The other peer closed the connection
+                close();
+                eventSource.onClose();
+            }
+        }
+
+        protected void flush() throws IOException
+        {
+            continuation.getServletResponse().flushBuffer();
+        }
+
+        public void close()
+        {
+            synchronized (this)
+            {
+                closed = true;
+                heartBeat.cancel(false);
+            }
+            continuation.complete();
+        }
+
+        private void scheduleHeartBeat()
+        {
+            synchronized (this)
+            {
+                if (!closed)
+                    heartBeat = scheduler.schedule(this, heartBeatPeriod, TimeUnit.SECONDS);
+            }
+        }
+    }
+}
