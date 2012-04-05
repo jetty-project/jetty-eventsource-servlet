@@ -43,9 +43,11 @@ import org.eclipse.jetty.continuation.ContinuationSupport;
  */
 public abstract class EventSourceServlet extends HttpServlet
 {
-    private static final byte[] EVENT_FIELD = "event: ".getBytes(Charset.forName("UTF-8"));
-    private static final byte[] DATA_FIELD = "data: ".getBytes(Charset.forName("UTF-8"));
-    private static final byte[] COMMENT_FIELD = ": ".getBytes(Charset.forName("UTF-8"));
+    private static final Charset UTF_8 = Charset.forName("UTF-8");
+    private static final byte[] EVENT_FIELD = "event: ".getBytes(UTF_8);
+    private static final byte[] DATA_FIELD = "data: ".getBytes(UTF_8);
+    private static final byte[] COMMENT_FIELD = ": ".getBytes(UTF_8);
+    private static final byte[] CRLF = new byte[]{'\r', '\n'};
 
     private ScheduledExecutorService scheduler;
     private int heartBeatPeriod = 10;
@@ -104,6 +106,7 @@ public abstract class EventSourceServlet extends HttpServlet
     protected void respond(HttpServletRequest request, HttpServletResponse response) throws IOException
     {
         response.setStatus(HttpServletResponse.SC_OK);
+        response.setCharacterEncoding(UTF_8.name());
         response.setContentType("text/event-stream");
         // By adding this header, and not closing the connection,
         // we disable HTTP chunking, and we can use write()+flush()
@@ -137,8 +140,8 @@ public abstract class EventSourceServlet extends HttpServlet
             synchronized (this)
             {
                 output.write(DATA_FIELD);
-                output.println(data);
-                output.println();
+                output.write(data.getBytes(UTF_8.name()));
+                output.write(CRLF);
                 flush();
             }
         }
@@ -148,8 +151,8 @@ public abstract class EventSourceServlet extends HttpServlet
             synchronized (this)
             {
                 output.write(COMMENT_FIELD);
-                output.println(comment);
-                output.println();
+                output.write(comment.getBytes(UTF_8.name()));
+                output.write(CRLF);
                 flush();
             }
         }

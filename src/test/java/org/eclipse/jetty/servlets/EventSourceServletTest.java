@@ -207,4 +207,73 @@ public class EventSourceServletTest
 
         socket.close();
     }
+
+    @Test
+    public void testEncoding() throws Exception
+    {
+        // The EURO symbol
+        final String data = "\u20AC";
+        class S extends EventSourceServlet
+        {
+            @Override
+            protected EventSource newEventSource(HttpServletRequest request)
+            {
+                return new EventSource()
+                {
+                    public void onOpen(Emitter emitter) throws IOException
+                    {
+                        emitter.data(data);
+                    }
+
+                    public void onClose()
+                    {
+                    }
+                };
+            }
+        }
+
+        String servletPath = "/eventsource";
+        ServletHolder servletHolder = new ServletHolder(new S());
+        int heartBeatPeriod = 2;
+        servletHolder.setInitParameter("heartBeatPeriod", String.valueOf(heartBeatPeriod));
+        context.addServlet(servletHolder, servletPath);
+
+        int serverPort = connector.getLocalPort();
+        Socket socket = new Socket("localhost", serverPort);
+        OutputStream output = socket.getOutputStream();
+
+        String handshake = "";
+        handshake += "GET " + context.getContextPath() + servletPath + " HTTP/1.1\r\n";
+        handshake += "Host: localhost:" + serverPort + "\r\n";
+        handshake += "Accept: text/event-stream\r\n";
+        handshake += "\r\n";
+        output.write(handshake.getBytes("UTF-8"));
+        output.flush();
+
+        // Read and discard the HTTP response
+        InputStream input = socket.getInputStream();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+        String line = reader.readLine();
+        while (line != null)
+        {
+            if (line.length() == 0)
+                break;
+            line = reader.readLine();
+        }
+        // Now we can parse the event-source stream
+
+        line = reader.readLine();
+        String received = "";
+        while (line != null)
+        {
+            received += line;
+            if (line.length() == 0)
+                break;
+            line = reader.readLine();
+        }
+
+        Assert.assertEquals("data: " + data, received);
+
+        socket.close();
+    }
 }
