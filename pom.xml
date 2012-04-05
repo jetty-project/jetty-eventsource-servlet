@@ -9,7 +9,7 @@
     <packaging>war</packaging>
 
     <properties>
-        <jetty-version>7.4.5.v20110725</jetty-version>
+        <jetty-version>7.6.2.v20120308</jetty-version>
     </properties>
 
     <build>
