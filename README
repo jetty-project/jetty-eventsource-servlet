@@ -1,2 +1,0 @@
-A standard servlet implementing Server Sent Events,
-also known as EventSource: http://www.w3.org/TR/eventsource/
