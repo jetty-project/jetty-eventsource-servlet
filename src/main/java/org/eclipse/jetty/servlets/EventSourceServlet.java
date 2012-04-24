@@ -40,8 +40,13 @@ import org.eclipse.jetty.continuation.ContinuationSupport;
  * <p>This servlet must be subclassed to implement abstract method {@link #newEventSource(HttpServletRequest)}
  * to return an instance of {@link EventSource} that allows application to listen for event source events
  * and to emit event source events.</p>
+ * <p>This servlet supports the following configuration parameters:</p>
+ * <ul>
+ *     <li><code>heartBeatPeriod</code>, that specifies the heartbeat period, in seconds, used to check
+ *     whether the connection has been closed by the client; defaults to 10 seconds.</li>
+ * </ul>
  *
- * <p>NOTE: there is currently no support for last-event-id</p>
+ * <p>NOTE: there is currently no support for <code>last-event-id</code>.</p>
  */
 public abstract class EventSourceServlet extends HttpServlet
 {
