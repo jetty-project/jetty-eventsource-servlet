@@ -43,7 +43,7 @@
     </issueManagement>
 
     <properties>
-        <jetty-version>7.6.2.v20120308</jetty-version>
+        <jetty-version>7.6.3.v20120416</jetty-version>
     </properties>
 
     <build>

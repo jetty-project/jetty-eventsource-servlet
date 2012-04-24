@@ -19,6 +19,7 @@ package org.eclipse.jetty.servlets;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
+import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
 import java.util.Enumeration;
 import java.util.concurrent.Executors;
@@ -51,10 +52,23 @@ import org.eclipse.jetty.continuation.ContinuationSupport;
 public abstract class EventSourceServlet extends HttpServlet
 {
     private static final Charset UTF_8 = Charset.forName("UTF-8");
-    private static final byte[] EVENT_FIELD = "event: ".getBytes(UTF_8);
-    private static final byte[] DATA_FIELD = "data: ".getBytes(UTF_8);
-    private static final byte[] COMMENT_FIELD = ": ".getBytes(UTF_8);
     private static final byte[] CRLF = new byte[]{'\r', '\n'};
+    private static final byte[] EVENT_FIELD;
+    private static final byte[] DATA_FIELD;
+    private static final byte[] COMMENT_FIELD;
+    static
+    {
+        try
+        {
+            EVENT_FIELD = "event: ".getBytes(UTF_8.name());
+            DATA_FIELD = "data: ".getBytes(UTF_8.name());
+            COMMENT_FIELD = ": ".getBytes(UTF_8.name());
+        }
+        catch (UnsupportedEncodingException x)
+        {
+            throw new RuntimeException(x);
+        }
+    }
 
     private ScheduledExecutorService scheduler;
     private int heartBeatPeriod = 10;
