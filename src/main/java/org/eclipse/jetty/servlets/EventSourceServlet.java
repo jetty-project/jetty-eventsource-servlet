@@ -16,7 +16,9 @@
 
 package org.eclipse.jetty.servlets;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.Charset;
 import java.util.Enumeration;
 import java.util.concurrent.Executors;
@@ -135,12 +137,29 @@ public abstract class EventSourceServlet extends HttpServlet
             this.output = continuation.getServletResponse().getOutputStream();
         }
 
+        public void event(String name, String data) throws IOException
+        {
+            synchronized (this)
+            {
+                output.write(EVENT_FIELD);
+                output.write(name.getBytes(UTF_8.name()));
+                output.write(CRLF);
+                data(data);
+            }
+        }
+
         public void data(String data) throws IOException
         {
             synchronized (this)
             {
-                output.write(DATA_FIELD);
-                output.write(data.getBytes(UTF_8.name()));
+                BufferedReader reader = new BufferedReader(new StringReader(data));
+                String line;
+                while ((line = reader.readLine()) != null)
+                {
+                    output.write(DATA_FIELD);
+                    output.write(line.getBytes(UTF_8.name()));
+                    output.write(CRLF);
+                }
                 output.write(CRLF);
                 flush();
             }
@@ -152,6 +171,7 @@ public abstract class EventSourceServlet extends HttpServlet
             {
                 output.write(COMMENT_FIELD);
                 output.write(comment.getBytes(UTF_8.name()));
+                output.write(CRLF);
                 output.write(CRLF);
                 flush();
             }

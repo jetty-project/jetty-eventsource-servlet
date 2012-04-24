@@ -79,29 +79,9 @@ public class EventSourceServletTest
         servletHolder.setInitParameter("heartBeatPeriod", String.valueOf(heartBeatPeriod));
         context.addServlet(servletHolder, servletPath);
 
-        int serverPort = connector.getLocalPort();
-        Socket socket = new Socket("localhost", serverPort);
-        OutputStream output = socket.getOutputStream();
-
-        String handshake = "";
-        handshake += "GET " + context.getContextPath() + servletPath + " HTTP/1.1\r\n";
-        handshake += "Host: localhost:" + serverPort + "\r\n";
-        handshake += "Accept: text/event-stream\r\n";
-        handshake += "\r\n";
-        output.write(handshake.getBytes("UTF-8"));
-        output.flush();
-
-        // Read and discard the HTTP response
-        InputStream input = socket.getInputStream();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-        String line = reader.readLine();
-        while (line != null)
-        {
-            if (line.length() == 0)
-                break;
-            line = reader.readLine();
-        }
-        // Now we can parse the event-source stream
+        Socket socket = new Socket("localhost", connector.getLocalPort());
+        writeHTTPRequest(socket, servletPath);
+        BufferedReader reader = readAndDiscardHTTPResponse(socket);
 
         Assert.assertTrue(emitterLatch.await(1, TimeUnit.SECONDS));
         EventSource.Emitter emitter = emitterRef.get();
@@ -110,7 +90,7 @@ public class EventSourceServletTest
         String data = "foo";
         emitter.data(data);
 
-        line = reader.readLine();
+        String line = reader.readLine();
         String received = "";
         while (line != null)
         {
@@ -152,34 +132,11 @@ public class EventSourceServletTest
         }
 
         String servletPath = "/eventsource";
-        ServletHolder servletHolder = new ServletHolder(new S());
-        int heartBeatPeriod = 2;
-        servletHolder.setInitParameter("heartBeatPeriod", String.valueOf(heartBeatPeriod));
-        context.addServlet(servletHolder, servletPath);
+        context.addServlet(new ServletHolder(new S()), servletPath);
 
-        int serverPort = connector.getLocalPort();
-        Socket socket = new Socket("localhost", serverPort);
-        OutputStream output = socket.getOutputStream();
-
-        String handshake = "";
-        handshake += "GET " + context.getContextPath() + servletPath + " HTTP/1.1\r\n";
-        handshake += "Host: localhost:" + serverPort + "\r\n";
-        handshake += "Accept: text/event-stream\r\n";
-        handshake += "\r\n";
-        output.write(handshake.getBytes("UTF-8"));
-        output.flush();
-
-        // Read and discard the HTTP response
-        InputStream input = socket.getInputStream();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(input));
-        String line = reader.readLine();
-        while (line != null)
-        {
-            if (line.length() == 0)
-                break;
-            line = reader.readLine();
-        }
-        // Now we can parse the event-source stream
+        Socket socket = new Socket("localhost", connector.getLocalPort());
+        writeHTTPRequest(socket, servletPath);
+        BufferedReader reader = readAndDiscardHTTPResponse(socket);
 
         Assert.assertTrue(emitterLatch.await(1, TimeUnit.SECONDS));
         EventSource.Emitter emitter = emitterRef.get();
@@ -188,7 +145,7 @@ public class EventSourceServletTest
         String comment = "foo";
         emitter.comment(comment);
 
-        line = reader.readLine();
+        String line = reader.readLine();
         String received = "";
         while (line != null)
         {
@@ -233,36 +190,13 @@ public class EventSourceServletTest
         }
 
         String servletPath = "/eventsource";
-        ServletHolder servletHolder = new ServletHolder(new S());
-        int heartBeatPeriod = 2;
-        servletHolder.setInitParameter("heartBeatPeriod", String.valueOf(heartBeatPeriod));
-        context.addServlet(servletHolder, servletPath);
+        context.addServlet(new ServletHolder(new S()), servletPath);
 
-        int serverPort = connector.getLocalPort();
-        Socket socket = new Socket("localhost", serverPort);
-        OutputStream output = socket.getOutputStream();
+        Socket socket = new Socket("localhost", connector.getLocalPort());
+        writeHTTPRequest(socket, servletPath);
+        BufferedReader reader = readAndDiscardHTTPResponse(socket);
 
-        String handshake = "";
-        handshake += "GET " + context.getContextPath() + servletPath + " HTTP/1.1\r\n";
-        handshake += "Host: localhost:" + serverPort + "\r\n";
-        handshake += "Accept: text/event-stream\r\n";
-        handshake += "\r\n";
-        output.write(handshake.getBytes("UTF-8"));
-        output.flush();
-
-        // Read and discard the HTTP response
-        InputStream input = socket.getInputStream();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(input));
         String line = reader.readLine();
-        while (line != null)
-        {
-            if (line.length() == 0)
-                break;
-            line = reader.readLine();
-        }
-        // Now we can parse the event-source stream
-
-        line = reader.readLine();
         String received = "";
         while (line != null)
         {
@@ -275,5 +209,124 @@ public class EventSourceServletTest
         Assert.assertEquals("data: " + data, received);
 
         socket.close();
+    }
+
+    @Test
+    public void testMultiLineData() throws Exception
+    {
+        String data1 = "data1";
+        String data2 = "data2";
+        String data3 = "data3";
+        String data4 = "data4";
+        final String data = data1 + "\r\n" + data2 + "\r" + data3 + "\n" + data4;
+        class S extends EventSourceServlet
+        {
+            @Override
+            protected EventSource newEventSource(HttpServletRequest request)
+            {
+                return new EventSource()
+                {
+                    public void onOpen(Emitter emitter) throws IOException
+                    {
+                        emitter.data(data);
+                    }
+
+                    public void onClose()
+                    {
+                    }
+                };
+            }
+        }
+
+        String servletPath = "/eventsource";
+        context.addServlet(new ServletHolder(new S()), servletPath);
+
+        Socket socket = new Socket("localhost", connector.getLocalPort());
+        writeHTTPRequest(socket, servletPath);
+        BufferedReader reader = readAndDiscardHTTPResponse(socket);
+
+        String line1 = reader.readLine();
+        Assert.assertEquals("data: " + data1, line1);
+        String line2 = reader.readLine();
+        Assert.assertEquals("data: " + data2, line2);
+        String line3 = reader.readLine();
+        Assert.assertEquals("data: " + data3, line3);
+        String line4 = reader.readLine();
+        Assert.assertEquals("data: " + data4, line4);
+        String line5 = reader.readLine();
+        Assert.assertEquals(0, line5.length());
+
+        socket.close();
+    }
+
+    @Test
+    public void testEvents() throws Exception
+    {
+        final String name = "event1";
+        final String data = "data2";
+        class S extends EventSourceServlet
+        {
+            @Override
+            protected EventSource newEventSource(HttpServletRequest request)
+            {
+                return new EventSource()
+                {
+                    public void onOpen(Emitter emitter) throws IOException
+                    {
+                        emitter.event(name, data);
+                    }
+
+                    public void onClose()
+                    {
+                    }
+                };
+            }
+        }
+
+        String servletPath = "/eventsource";
+        context.addServlet(new ServletHolder(new S()), servletPath);
+
+        Socket socket = new Socket("localhost", connector.getLocalPort());
+        writeHTTPRequest(socket, servletPath);
+        BufferedReader reader = readAndDiscardHTTPResponse(socket);
+
+        String line1 = reader.readLine();
+        Assert.assertEquals("event: " + name, line1);
+        String line2 = reader.readLine();
+        Assert.assertEquals("data: " + data, line2);
+        String line3 = reader.readLine();
+        Assert.assertEquals(0, line3.length());
+
+        socket.close();
+    }
+
+    private void writeHTTPRequest(Socket socket, String servletPath) throws IOException
+    {
+        int serverPort = socket.getPort();
+        OutputStream output = socket.getOutputStream();
+
+        String handshake = "";
+        handshake += "GET " + context.getContextPath() + servletPath + " HTTP/1.1\r\n";
+        handshake += "Host: localhost:" + serverPort + "\r\n";
+        handshake += "Accept: text/event-stream\r\n";
+        handshake += "\r\n";
+        output.write(handshake.getBytes("UTF-8"));
+        output.flush();
+    }
+
+    private BufferedReader readAndDiscardHTTPResponse(Socket socket) throws IOException
+    {
+        // Read and discard the HTTP response
+        InputStream input = socket.getInputStream();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(input));
+        String line = reader.readLine();
+        while (line != null)
+        {
+            if (line.length() == 0)
+                break;
+            line = reader.readLine();
+        }
+        // Now we can parse the event-source stream
+        return reader;
     }
 }

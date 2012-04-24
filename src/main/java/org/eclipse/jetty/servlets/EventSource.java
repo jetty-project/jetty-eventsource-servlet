@@ -26,6 +26,8 @@ public interface EventSource
 
     public interface Emitter
     {
+        public void event(String name, String data) throws IOException;
+
         public void data(String data) throws IOException;
 
         public void comment(String comment) throws IOException;
