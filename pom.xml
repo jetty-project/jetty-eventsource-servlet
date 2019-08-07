@@ -43,7 +43,7 @@
     </issueManagement>
 
     <properties>
-        <jetty-version>7.6.3.v20120416</jetty-version>
+        <jetty-version>9.4.19.v20190610</jetty-version>
     </properties>
 
     <build>
@@ -61,8 +61,8 @@
     <dependencies>
         <dependency>
             <groupId>javax.servlet</groupId>
-            <artifactId>servlet-api</artifactId>
-            <version>2.5</version>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>3.1.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
